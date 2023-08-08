@@ -47,25 +47,23 @@ public class PaymentService {
      * if payment not sufficient -> cancel order event and update the amount in DB
      **/
     @Transactional
-    public PaymentEvent newOrderEvent(OrderEvent orderEvent) {
+    public void newOrderEvent(OrderEvent orderEvent) {
         OrderRequestDto orderRequestDto = orderEvent.getOrderRequestDto();
         PaymentRequestDto paymentRequestDto = new PaymentRequestDto(orderRequestDto.getOrderId(),
                 orderRequestDto.getUserId(), orderRequestDto.getAmount());
 
-        return userBalanceRepository.findById(orderRequestDto.getUserId())
+        PaymentEvent paymentEvent = userBalanceRepository.findById(orderRequestDto.getUserId())
                 .filter(ub -> ub.getPrice() > orderRequestDto.getAmount())
                 .map(ub -> {
                     ub.setPrice(ub.getPrice() - orderRequestDto.getAmount());
                     userTransactionRepository.save(new UserTransaction(orderRequestDto.getOrderId(), orderRequestDto.getUserId(), orderRequestDto.getAmount()));
-                    PaymentEvent paymentEvent = new PaymentEvent(paymentRequestDto, PaymentStatus.PAYMENT_COMPLETED);
-                    template.send("payment-event", paymentEvent);
-                    return paymentEvent;
+                    return new PaymentEvent(paymentRequestDto, PaymentStatus.PAYMENT_COMPLETED);
                 }).orElse(new PaymentEvent(paymentRequestDto, PaymentStatus.PAYMENT_FAILED));
+        template.send("payment-event", paymentEvent);
     }
 
     @Transactional
     public void cancelOrderEvent(OrderEvent orderEvent) {
-
         userTransactionRepository.findById(orderEvent.getOrderRequestDto().getOrderId())
                 .ifPresent(ut -> {
                     userTransactionRepository.delete(ut);

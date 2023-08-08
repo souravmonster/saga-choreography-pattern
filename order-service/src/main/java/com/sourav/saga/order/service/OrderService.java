@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.function.Consumer;
+
 
 @Service
 public class OrderService {
@@ -37,15 +37,10 @@ public class OrderService {
     }
 
     @KafkaListener(topics = "payment-event", groupId = "payment-event-group")
-    public Consumer<PaymentEvent> paymentEventConsumer() {
-        return (payment) -> this.updateOrder(payment.getPaymentRequestDto().getOrderId(), po -> {
-            po.setPaymentStatus(payment.getPaymentStatus());
-        });
-    }
-
-    @Transactional
-    public void updateOrder(int id, Consumer<PurchaseOrder> consumer) {
-        orderRepository.findById(id).ifPresent(consumer.andThen(this::updateOrder));
+    public void paymentEventConsumer(PaymentEvent paymentEvent) {
+        PurchaseOrder order = orderRepository.findById(paymentEvent.getPaymentRequestDto().getOrderId()).get();
+        order.setPaymentStatus(paymentEvent.getPaymentStatus());
+        this.updateOrder(order);
     }
 
     private void updateOrder(PurchaseOrder purchaseOrder) {
@@ -56,6 +51,7 @@ public class OrderService {
         if (!isPaymentComplete) {
             template.send("order-event", event);
         }
+        orderRepository.save(purchaseOrder);
     }
 
     public List<PurchaseOrder> getAllOrders() {
